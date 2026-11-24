@@ -391,10 +391,15 @@
         // ==========================================
         // 1. CONFIGURATION & INITIALIZATION
         // ==========================================
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'whisper-space-anon-chat';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : null;
+        const appId = 'whisper-space-anon-chat';
+        const firebaseConfig = {
+        apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb4l0",
+        authDomain: "whisperspace-chat.firebaseapp.com",
+        projectId: "whisperspace-chat",
+        storageBucket: "whisperspace-chat.firebasestorage.app",
+        messagingSenderId: "13675671946",
+        appId: "1:13675671946:web:10799476ed4e910b279873"
+        };
 
         if (!firebaseConfig) {
             showToast("Missing Firebase configuration environment.", "error");
