@@ -64,7 +64,8 @@
   <main id="messagesContainer" class="flex-1 overflow-y-auto px-3 py-4 space-y-3 select-text">
     <div id="loadingState" class="h-full flex flex-col items-center justify-center text-center px-6">
       <div class="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-      <p class="text-sm text-zinc-400">Tuning into encrypted frequency...</p>
+      <p id="statusText" class="text-sm text-zinc-300 font-medium">Initializing script...</p>
+      <p id="debugSubtext" class="text-xs text-zinc-500 mt-1.5 max-w-xs break-words"></p>
     </div>
   </main>
 
@@ -154,7 +155,34 @@
     </div>
   </aside>
 
+  <!-- Global Error Catcher (runs even if module imports fail) -->
+  <script>
+    function setDiagnostic(title, detail = "", isError = false) {
+      const s = document.getElementById("statusText");
+      const d = document.getElementById("debugSubtext");
+      if (s) {
+        s.textContent = title;
+        if (isError) s.className = "text-sm text-red-400 font-semibold";
+      }
+      if (d && detail) {
+        d.textContent = detail;
+        if (isError) d.className = "text-xs text-red-300 mt-1.5 max-w-xs break-words";
+      }
+    }
+
+    window.addEventListener("error", (e) => {
+      setDiagnostic("Script Error", e.message || "Unknown error", true);
+    });
+
+    window.addEventListener("unhandledrejection", (e) => {
+      const msg = e.reason?.message || String(e.reason);
+      setDiagnostic("Unhandled Error", msg, true);
+    });
+  </script>
+
   <script type="module">
+    setDiagnostic("Step 1/4: Loading Firebase SDK...", `Origin: ${window.location.origin}`);
+
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
@@ -176,7 +204,7 @@
     // ==========================================
     const appId = 'whisper-space-anon-chat';
     const firebaseConfig = {
-      apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb4l0",
+      apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb410",
       authDomain: "whisperspace-chat.firebaseapp.com",
       projectId: "whisperspace-chat",
       storageBucket: "whisperspace-chat.firebasestorage.app",
@@ -194,6 +222,9 @@
     const keyCache = new Map();
 
     async function deriveRoomKey(roomSecret) {
+      if (!window.crypto || !window.crypto.subtle) {
+        throw new Error(`Web Crypto unavailable on ${window.location.origin}. Set androidScheme: "https" in capacitor.config.json.`);
+      }
       if (keyCache.has(roomSecret)) return keyCache.get(roomSecret);
       const enc = new TextEncoder();
       const keyMaterial = await crypto.subtle.importKey(
@@ -291,4 +322,334 @@
 
     const messagesContainer = document.getElementById("messagesContainer");
     const messageForm = document.getElementById("messageForm");
-    const messageInput = document.getElementById
+    const messageInput = document.getElementById("messageInput");
+    const presenceList = document.getElementById("presenceList");
+    const onlineCount = document.getElementById("onlineCount");
+    const roomTitle = document.getElementById("roomTitle");
+    const roomSubtitle = document.getElementById("roomSubtitle");
+    const copyRoomBtn = document.getElementById("copyRoomBtn");
+    const toastEl = document.getElementById("toast");
+
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.remove("opacity-0");
+      setTimeout(() => toastEl.classList.add("opacity-0"), 2600);
+    }
+
+    function updatePersonaUI() {
+      document.getElementById("myAvatarBadge").textContent = currentPersona.emoji;
+      document.getElementById("drawerAvatar").textContent = currentPersona.emoji;
+      document.getElementById("drawerAlias").textContent = currentPersona.name;
+    }
+    updatePersonaUI();
+
+    // Drawer Controls
+    const roomDrawer = document.getElementById("roomDrawer");
+    const drawerBackdrop = document.getElementById("drawerBackdrop");
+
+    function openDrawer() {
+      drawerBackdrop.classList.remove("hidden");
+      requestAnimationFrame(() => {
+        drawerBackdrop.classList.remove("opacity-0");
+        roomDrawer.classList.remove("-translate-x-full");
+      });
+    }
+
+    function closeDrawer() {
+      drawerBackdrop.classList.add("opacity-0");
+      roomDrawer.classList.add("-translate-x-full");
+      setTimeout(() => drawerBackdrop.classList.add("hidden"), 200);
+    }
+
+    document.getElementById("menuBtn").addEventListener("click", openDrawer);
+    document.getElementById("closeDrawerBtn").addEventListener("click", closeDrawer);
+    drawerBackdrop.addEventListener("click", closeDrawer);
+
+    document.getElementById("rerollPersonaBtn").addEventListener("click", () => {
+      currentPersona = generatePersona();
+      localStorage.setItem("ws_persona", JSON.stringify(currentPersona));
+      updatePersonaUI();
+      updatePresence();
+      showToast(`Alias changed to ${currentPersona.name}`);
+    });
+
+    // ==========================================
+    // 4. FIRESTORE LISTENERS (E2EE + 24H TTL)
+    // ==========================================
+    const baseDataPath = ["artifacts", appId, "public", "data"];
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    async function updatePresence() {
+      if (!currentUser) return;
+      const presenceRef = doc(db, ...baseDataPath, "presence", `${currentRoomId}_${currentUser.uid}`);
+      await setDoc(presenceRef, {
+        roomId: currentRoomId,
+        uid: currentUser.uid,
+        name: currentPersona.name,
+        emoji: currentPersona.emoji,
+        color: currentPersona.color,
+        lastSeen: Date.now()
+      }).catch((err) => {
+        console.warn("Presence write failed:", err);
+      });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+      if (!ts) return "Just now";
+      const date = ts.toDate ? ts.toDate() : new Date(ts);
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    async function switchRoom(roomId, title, subtitle, isPrivate = false) {
+      currentRoomId = roomId;
+      roomTitle.textContent = title;
+      roomSubtitle.textContent = subtitle;
+
+      if (isPrivate) {
+        copyRoomBtn.classList.remove("hidden");
+        copyRoomBtn.textContent = `Code: ${roomId}`;
+      } else {
+        copyRoomBtn.classList.add("hidden");
+      }
+
+      if (unsubscribeMessages) unsubscribeMessages();
+      if (unsubscribePresence) unsubscribePresence();
+      if (presenceTimer) clearInterval(presenceTimer);
+
+      messagesContainer.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-center px-6">
+          <div class="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p id="statusText" class="text-sm text-zinc-300 font-medium">Step 3/4: Deriving encryption key...</p>
+          <p id="debugSubtext" class="text-xs text-zinc-500 mt-1.5 max-w-xs break-words">Room: ${escapeHtml(roomId)}</p>
+        </div>
+      `;
+
+      // Verify Web Crypto works immediately before subscribing
+      await deriveRoomKey(roomId);
+
+      // Ensure room metadata exists for private rooms
+      if (isPrivate) {
+        const roomRef = doc(db, ...baseDataPath, "rooms", roomId);
+        const snap = await getDoc(roomRef).catch(() => null);
+        if (!snap || !snap.exists()) {
+          await setDoc(roomRef, {
+            createdAt: serverTimestamp(),
+            isPrivate: true
+          }).catch(() => {});
+        }
+      }
+
+      // Listen to presence in current room
+      const presenceQuery = query(
+        collection(db, ...baseDataPath, "presence"),
+        where("roomId", "==", currentRoomId)
+      );
+
+      unsubscribePresence = onSnapshot(
+        presenceQuery,
+        (snapshot) => {
+          const now = Date.now();
+          const activeUsers = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (now - (data.lastSeen || 0) < 90000) {
+              activeUsers.push(data);
+            }
+          });
+
+          onlineCount.textContent = Math.max(1, activeUsers.length);
+          presenceList.innerHTML = activeUsers
+            .map(
+              (u) => `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] shrink-0" style="color: ${u.color}">
+                <span>${u.emoji}</span>
+                <span>${escapeHtml(u.name)}</span>
+              </span>`
+            )
+            .join("");
+        },
+        (err) => {
+          console.warn("Presence listener error:", err);
+        }
+      );
+
+      await updatePresence();
+      presenceTimer = setInterval(updatePresence, 30000);
+
+      setDiagnostic("Step 4/4: Connecting to Firestore...", "Waiting for server response");
+
+      // Listen to messages in current room
+      const messagesQuery = query(
+        collection(db, ...baseDataPath, "messages"),
+        where("roomId", "==", currentRoomId)
+      );
+
+      unsubscribeMessages = onSnapshot(
+        messagesQuery,
+        async (snapshot) => {
+          const now = Date.now();
+          const validDocs = [];
+
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const expiryMs = data.expiresAt?.toMillis
+              ? data.expiresAt.toMillis()
+              : data.expiresAt instanceof Date
+              ? data.expiresAt.getTime()
+              : 0;
+
+            if (expiryMs && now > expiryMs) {
+              deleteDoc(doc(db, ...baseDataPath, "messages", docSnap.id)).catch(() => {});
+              return;
+            }
+            validDocs.push({ id: docSnap.id, ...data });
+          });
+
+          validDocs.sort((a, b) => {
+            const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : now;
+            const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : now;
+            return tA - tB;
+          });
+
+          if (validDocs.length === 0) {
+            messagesContainer.innerHTML = `
+              <div class="h-full flex flex-col items-center justify-center text-center px-6 text-zinc-500">
+                <p class="text-sm font-medium text-zinc-300 mb-1">Encrypted channel silent</p>
+                <p class="text-xs">Messages are end-to-end encrypted and self-destruct after 24 hours.</p>
+              </div>
+            `;
+            return;
+          }
+
+          const renderedHtml = await Promise.all(
+            validDocs.map(async (msg) => {
+              const isMe = currentUser && msg.senderId === currentUser.uid;
+              const plainText = msg.isEncrypted
+                ? await decryptText(msg.text, currentRoomId)
+                : msg.text;
+
+              return `
+                <div class="flex flex-col ${isMe ? "items-end" : "items-start"}">
+                  <div class="flex items-center gap-1.5 mb-1 px-1">
+                    <span class="text-xs">${msg.senderEmoji || "👤"}</span>
+                    <span class="text-[11px] font-medium" style="color: ${msg.senderColor || "#a1a1aa"}">
+                      ${escapeHtml(msg.senderName || "Anonymous")}${isMe ? " (You)" : ""}
+                    </span>
+                    <span class="text-[10px] text-zinc-600">${formatTime(msg.createdAt)}</span>
+                  </div>
+                  <div class="max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
+                    isMe
+                      ? "bg-indigo-600 text-white rounded-br-sm"
+                      : "bg-[#181824] border border-zinc-800/90 text-zinc-100 rounded-bl-sm"
+                  }">
+                    ${escapeHtml(plainText)}
+                  </div>
+                </div>
+              `;
+            })
+          );
+
+          messagesContainer.innerHTML = renderedHtml.join("");
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        },
+        (err) => {
+          messagesContainer.innerHTML = `
+            <div class="h-full flex flex-col items-center justify-center text-center px-6">
+              <p class="text-sm font-semibold text-red-400 mb-1">Firestore Error (${escapeHtml(err.code || "unknown")})</p>
+              <p class="text-xs text-zinc-400 max-w-xs break-words">${escapeHtml(err.message)}</p>
+            </div>
+          `;
+        }
+      );
+    }
+
+    // ==========================================
+    // 5. SEND ENCRYPTED MESSAGE & ROOM ACTIONS
+    // ==========================================
+    messageForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const rawText = messageInput.value.trim();
+      if (!rawText || !currentUser) return;
+
+      messageInput.value = "";
+
+      try {
+        const encryptedPayload = await encryptText(rawText, currentRoomId);
+        const expiresAt = new Date(Date.now() + DAY_MS);
+
+        await addDoc(collection(db, ...baseDataPath, "messages"), {
+          roomId: currentRoomId,
+          text: encryptedPayload,
+          isEncrypted: true,
+          senderId: currentUser.uid,
+          senderName: currentPersona.name,
+          senderEmoji: currentPersona.emoji,
+          senderColor: currentPersona.color,
+          createdAt: serverTimestamp(),
+          expiresAt: expiresAt
+        });
+      } catch (err) {
+        showToast(`Send failed: ${err.code || err.message}`);
+        messageInput.value = rawText;
+      }
+    });
+
+    document.getElementById("joinGeneralBtn").addEventListener("click", () => {
+      switchRoom("general-lounge", "General Lounge", "Open frequency for everyone online", false);
+      closeDrawer();
+    });
+
+    document.getElementById("createPrivateBtn").addEventListener("click", () => {
+      const randomBytes = crypto.getRandomValues(new Uint8Array(6));
+      const secretCode = Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      switchRoom(secretCode, "Private Frequency", "Share room code to invite others", true);
+      closeDrawer();
+      showToast(`Created private room: ${secretCode}`);
+    });
+
+    document.getElementById("joinPrivateForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const code = document.getElementById("privateCodeInput").value.trim().toLowerCase();
+      if (!code) return;
+      document.getElementById("privateCodeInput").value = "";
+      switchRoom(code, "Private Frequency", "End-to-end encrypted room", true);
+      closeDrawer();
+    });
+
+    copyRoomBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(currentRoomId);
+        showToast("Secret room code copied!");
+      } catch {
+        showToast(`Room code: ${currentRoomId}`);
+      }
+    });
+
+    // ==========================================
+    // 6. AUTHENTICATION BOOTSTRAP (WITH DIAGNOSTICS)
+    // ==========================================
+    setDiagnostic("Step 2/4: Signing into Firebase...", `Origin: ${window.location.origin}`);
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        currentUser = user;
+        try {
+          await switchRoom("general-lounge", "General Lounge", "Open frequency for everyone online", false);
+        } catch (err) {
+          setDiagnostic("Room Setup Failed", err.message, true);
+        }
+      }
+    });
+
+    signInAnonymously(auth).catch((err) => {
+      setDiagnostic(`Auth Failed (${err.code || "error"})`, err.message, true);
+    });
+  </script>
+</body>
+</html>
