@@ -1,1164 +1,294 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhisperSpace — Anonymous Real-Time Chat</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts: Inter & JetBrains Mono -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    },
-                    colors: {
-                        dark: {
-                            950: '#09090b',
-                            900: '#101014',
-                            850: '#16161c',
-                            800: '#1e1e26',
-                            700: '#2b2b36',
-                        }
-                    },
-                    animation: {
-                        'fade-in': 'fadeIn 0.25s ease-out forwards',
-                        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    },
-                    keyframes: {
-                        fadeIn: {
-                            '0%': { opacity: '0' },
-                            '100%': { opacity: '1' },
-                        },
-                        slideUp: {
-                            '0%': { opacity: '0', transform: 'translateY(12px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-
-    <style>
-        /* Custom Scrollbar for sleek dark UI */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #2b2b36;
-            border-radius: 9999px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #3f3f4e;
-        }
-        
-        /* Glassmorphism utilities */
-        .glass-panel {
-            background: rgba(22, 22, 28, 0.75);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        /* Message bubble subtle tail effects */
-        .bubble-self {
-            border-bottom-right-radius: 4px;
-        }
-        .bubble-other {
-            border-bottom-left-radius: 4px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>WhisperSpace</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: #0b0b0f;
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overscroll-behavior-y: none;
+    }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #27273a; border-radius: 9999px; }
+  </style>
 </head>
-<body class="bg-dark-950 text-zinc-100 font-sans antialiased selection:bg-indigo-500/30 selection:text-indigo-200 h-screen overflow-hidden flex flex-col">
+<body class="h-screen flex flex-col overflow-hidden select-none">
 
-    <!-- Toast Notification Container (Replaces alert) -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full px-4 sm:px-0"></div>
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full text-xs font-medium bg-zinc-800 border border-zinc-700 text-zinc-100 shadow-lg opacity-0 pointer-events-none transition-opacity duration-200"></div>
 
-    <!-- Custom Modal Container (For Private Rooms & Confirmations) -->
-    <div id="modal-overlay" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 hidden items-center justify-center p-4 animate-fade-in">
-        <!-- Private Room Modal -->
-        <div id="private-room-modal" class="glass-panel rounded-2xl max-w-md w-full p-6 shadow-2xl hidden animate-slide-up">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-2.5">
-                    <div class="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
-                        <i data-lucide="lock" class="w-5 h-5"></i>
-                    </div>
-                    <h3 class="text-lg font-semibold text-white">Private Encrypted Room</h3>
-                </div>
-                <button onclick="closeModals()" class="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-            
-            <p class="text-sm text-zinc-400 mb-5">
-                Create an unlisted room with a unique code or enter an existing code shared by a friend.
-            </p>
-
-            <!-- Create New Private Room -->
-            <div class="mb-6">
-                <button onclick="createPrivateRoom()" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]">
-                    <i data-lucide="sparkles" class="w-4 h-4"></i>
-                    <span>Generate New Private Room</span>
-                </button>
-            </div>
-
-            <div class="relative flex py-2 items-center mb-6">
-                <div class="flex-grow border-t border-zinc-800"></div>
-                <span class="flex-shrink mx-3 text-xs uppercase tracking-wider text-zinc-500 font-medium">Or join with code</span>
-                <div class="flex-grow border-t border-zinc-800"></div>
-            </div>
-
-            <!-- Join via Code -->
-            <form onsubmit="handleJoinPrivateCode(event)" class="flex gap-2">
-                <input type="text" id="private-code-input" maxlength="10" placeholder="e.g. X9K-42B" class="flex-1 bg-dark-900 border border-zinc-700/80 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm font-mono uppercase tracking-widest text-white placeholder-zinc-600 focus:outline-none transition">
-                <button type="submit" class="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-medium text-sm border border-zinc-700 transition">
-                    Join
-                </button>
-            </form>
+  <!-- Top Header -->
+  <header class="flex items-center justify-between px-3 py-3 bg-[#111118] border-b border-zinc-800/80 shrink-0">
+    <div class="flex items-center gap-3 min-w-0">
+      <button id="menuBtn" class="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-200 active:scale-95 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-lg shrink-0">
+        #
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <h1 id="roomTitle" class="text-sm font-semibold text-white truncate">General Lounge</h1>
+          <span title="End-to-End Encrypted" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium">E2EE</span>
         </div>
-
-        <!-- Burn Session / New Identity Confirmation Modal -->
-        <div id="burn-modal" class="glass-panel rounded-2xl max-w-md w-full p-6 shadow-2xl hidden animate-slide-up border-rose-500/20">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="p-2.5 rounded-xl bg-rose-500/15 text-rose-400">
-                    <i data-lucide="flame" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-white">Burn Current Identity?</h3>
-                    <p class="text-xs text-rose-400 font-medium">Irreversible session reset</p>
-                </div>
-            </div>
-            
-            <p class="text-sm text-zinc-300 leading-relaxed mb-6">
-                This will immediately sever your current presence, wipe your local view, and generate a brand new anonymous persona and cryptographic ID.
-            </p>
-
-            <div class="flex items-center justify-end gap-3">
-                <button onclick="closeModals()" class="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
-                    Cancel
-                </button>
-                <button onclick="executeBurnSession()" class="px-5 py-2.5 rounded-xl text-sm font-medium bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20 flex items-center gap-2 transition active:scale-[0.98]">
-                    <i data-lucide="flame" class="w-4 h-4"></i>
-                    <span>Burn & Reincarnate</span>
-                </button>
-            </div>
-        </div>
+        <p id="roomSubtitle" class="text-xs text-zinc-400 truncate">Open frequency for everyone online</p>
+      </div>
     </div>
 
-    <!-- Main App Layout -->
-    <div class="flex-1 flex overflow-hidden relative">
-        
-        <!-- Mobile Sidebar Backdrop -->
-        <div id="sidebar-backdrop" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-20 hidden lg:hidden"></div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button id="copyRoomBtn" title="Copy Room Code" class="hidden px-2.5 py-1.5 rounded-full bg-zinc-800/90 border border-zinc-700/80 text-[11px] font-mono text-indigo-300 active:scale-95 transition">
+        Copy ID
+      </button>
+      <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="onlineCount">1</span>
+      </div>
+    </div>
+  </header>
 
-        <!-- Left Sidebar: Identity & Rooms -->
-        <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-30 w-80 bg-dark-900 border-r border-zinc-800/80 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out">
-            
-            <!-- Brand Header -->
-            <div class="p-5 border-b border-zinc-800/80 flex items-center justify-between">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                        <i data-lucide="ghost" class="w-5 h-5 text-white"></i>
-                    </div>
-                    <div>
-                        <h1 class="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
-                            WhisperSpace
-                            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/20">Anon</span>
-                        </h1>
-                        <p class="text-[11px] text-zinc-500">Zero-trace ephemeral rooms</p>
-                    </div>
-                </div>
-                <button onclick="toggleMobileSidebar()" class="lg:hidden p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
+  <!-- Active Users Bar -->
+  <div class="px-3 py-2 bg-[#0e0e14] border-b border-zinc-800/60 flex items-center gap-2 overflow-x-auto shrink-0">
+    <span class="text-xs text-zinc-500 shrink-0">In room:</span>
+    <div id="presenceList" class="flex items-center gap-1.5 text-xs"></div>
+  </div>
 
-            <!-- Anonymous Persona Card -->
-            <div class="p-4">
-                <div class="p-4 rounded-2xl bg-dark-850 border border-zinc-800/90 relative overflow-hidden group">
-                    <!-- Subtle ambient glow based on persona color -->
-                    <div id="persona-glow" class="absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-20 bg-indigo-500 transition-colors duration-500"></div>
-                    
-                    <div class="flex items-center justify-between mb-3 relative z-10">
-                        <span class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                            Your Active Mask
-                        </span>
-                        <button onclick="regenerateAlias()" title="Shuffle Alias & Avatar" class="p-1.5 rounded-lg bg-dark-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/70 transition active:rotate-180 duration-300">
-                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
+  <!-- Messages Area -->
+  <main id="messagesContainer" class="flex-1 overflow-y-auto px-3 py-4 space-y-3 select-text">
+    <div id="loadingState" class="h-full flex flex-col items-center justify-center text-center px-6">
+      <div class="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <p class="text-sm text-zinc-400">Tuning into encrypted frequency...</p>
+    </div>
+  </main>
 
-                    <div class="flex items-center gap-3 relative z-10">
-                        <div id="my-avatar" class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-inner border border-white/10 bg-indigo-500/20 shrink-0 transition-all duration-300">
-                            🐼
-                        </div>
-                        <div class="min-w-0 flex-1">
-                            <h2 id="my-alias" class="font-semibold text-sm text-white truncate">Initializing...</h2>
-                            <p id="my-uid-display" class="text-[11px] font-mono text-zinc-500 truncate mt-0.5">ID: connecting...</p>
-                        </div>
-                    </div>
+  <!-- Message Input Bar -->
+  <footer class="p-3 bg-[#111118] border-t border-zinc-800/80 shrink-0">
+    <form id="messageForm" class="flex items-center gap-2">
+      <div class="flex-1 flex items-center gap-2 bg-[#181822] border border-zinc-800 focus-within:border-indigo-500/60 rounded-full px-3.5 py-2.5 transition">
+        <span id="myAvatarBadge" class="text-base leading-none shrink-0">🐼</span>
+        <input
+          id="messageInput"
+          type="text"
+          maxlength="500"
+          autocomplete="off"
+          placeholder="Send an anonymous whisper..."
+          class="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
+        />
+      </div>
+      <button
+        type="submit"
+        id="sendBtn"
+        class="w-11 h-11 rounded-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 flex items-center justify-center text-white shadow-md shadow-indigo-950/50 transition shrink-0"
+      >
+        <svg class="w-4 h-4 translate-x-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+        </svg>
+      </button>
+    </form>
+  </footer>
 
-                    <!-- Burn / New Identity Button -->
-                    <button onclick="openBurnModal()" class="mt-3.5 w-full py-2 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 text-xs font-medium flex items-center justify-center gap-1.5 transition">
-                        <i data-lucide="flame" class="w-3.5 h-3.5"></i>
-                        <span>Burn Session / New Identity</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Room Navigation -->
-            <div class="flex-1 overflow-y-auto px-4 pb-4 space-y-6">
-                
-                <!-- Public Topic Rooms -->
-                <div>
-                    <div class="px-2 mb-2 flex items-center justify-between">
-                        <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Public Frequencies</span>
-                        <span id="total-online-badge" class="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                            0 online
-                        </span>
-                    </div>
-                    <div id="public-rooms-list" class="space-y-1">
-                        <!-- Rendered dynamically -->
-                    </div>
-                </div>
-
-                <!-- Private Rooms Section -->
-                <div>
-                    <div class="px-2 mb-2 flex items-center justify-between">
-                        <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Private Channels</span>
-                        <button onclick="openPrivateModal()" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 transition">
-                            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                            <span>New / Join</span>
-                        </button>
-                    </div>
-                    
-                    <div id="private-rooms-list" class="space-y-1">
-                        <!-- Active private room will appear here if joined -->
-                    </div>
-
-                    <button onclick="openPrivateModal()" class="mt-2 w-full py-2.5 px-3 rounded-xl border border-dashed border-zinc-700/80 hover:border-indigo-500/60 hover:bg-indigo-500/5 text-zinc-400 hover:text-indigo-300 text-xs font-medium flex items-center justify-center gap-2 transition">
-                        <i data-lucide="key-round" class="w-3.5 h-3.5"></i>
-                        <span>Create or Enter Room Code</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Footer Status -->
-            <div class="p-4 border-t border-zinc-800/80 text-[11px] text-zinc-500 flex items-center justify-between">
-                <span class="flex items-center gap-1.5">
-                    <span id="connection-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
-                    <span id="connection-text">Connecting...</span>
-                </span>
-                <span class="font-mono">E2E Ephemeral</span>
-            </div>
-        </aside>
-
-        <!-- Main Chat Area -->
-        <main class="flex-1 flex flex-col min-w-0 bg-dark-950 relative">
-            
-            <!-- Top Chat Header -->
-            <header class="h-16 px-4 sm:px-6 border-b border-zinc-800/80 bg-dark-900/60 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
-                <div class="flex items-center gap-3 min-w-0">
-                    <button onclick="toggleMobileSidebar()" class="lg:hidden p-2 -ml-2 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition">
-                        <i data-lucide="menu" class="w-5 h-5"></i>
-                    </button>
-                    
-                    <div id="current-room-icon" class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
-                        <i data-lucide="hash" class="w-5 h-5"></i>
-                    </div>
-                    
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-2">
-                            <h2 id="current-room-name" class="font-semibold text-base text-white truncate">General Lounge</h2>
-                            <span id="private-room-badge" class="hidden items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                                <i data-lucide="lock" class="w-3 h-3"></i>
-                                PRIVATE
-                            </span>
-                        </div>
-                        <p id="current-room-desc" class="text-xs text-zinc-400 truncate">Open frequency for everyone online</p>
-                    </div>
-                </div>
-
-                <!-- Right Header Actions: Presence & Share Code -->
-                <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-                    <!-- Share Private Room Code Button (Visible in private rooms) -->
-                    <button id="share-code-btn" onclick="copyRoomCode()" class="hidden items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-xs font-mono font-medium transition active:scale-95">
-                        <span id="header-room-code">CODE</span>
-                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                    </button>
-
-                    <!-- Active Users in Room Pill -->
-                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-dark-850 border border-zinc-800 text-xs text-zinc-300" title="Active users in this room">
-                        <span class="relative flex h-2 w-2">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
-                        <span id="room-presence-count" class="font-semibold text-white">1</span>
-                        <span class="hidden sm:inline text-zinc-500">active</span>
-                    </div>
-                </div>
-            </header>
-
-            <!-- Active Users Bar (Subtle horizontal strip showing who is in the room) -->
-            <div id="active-users-strip" class="px-4 sm:px-6 py-2 bg-dark-900/40 border-b border-zinc-800/50 flex items-center gap-2 overflow-x-auto shrink-0 text-xs">
-                <span class="text-zinc-500 font-medium shrink-0">In room:</span>
-                <div id="active-users-pills" class="flex items-center gap-1.5">
-                    <!-- Populated via real-time presence -->
-                </div>
-            </div>
-
-            <!-- Messages Feed -->
-            <div id="messages-container" class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scroll-smooth">
-                <!-- Loading State -->
-                <div id="loading-messages" class="h-full flex flex-col items-center justify-center text-zinc-500 gap-3">
-                    <div class="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-sm">Tuning into encrypted frequency...</p>
-                </div>
-            </div>
-
-            <!-- Scroll to Bottom Floating Button -->
-            <button id="scroll-bottom-btn" onclick="scrollToBottom(true)" class="hidden absolute bottom-24 right-6 p-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-black/50 border border-indigo-400/30 transition transform hover:scale-105 z-20">
-                <i data-lucide="arrow-down" class="w-4 h-4"></i>
-            </button>
-
-            <!-- Message Input Area -->
-            <div class="p-3 sm:p-4 bg-dark-900/80 backdrop-blur-md border-t border-zinc-800/80 shrink-0">
-                <form id="message-form" onsubmit="handleSendMessage(event)" class="max-w-4xl mx-auto flex items-end gap-2 sm:gap-3">
-                    <div class="flex-1 bg-dark-850 border border-zinc-700/80 focus-within:border-indigo-500/80 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-2xl px-4 py-2.5 transition flex items-center gap-2">
-                        <span id="input-avatar-badge" class="text-base select-none shrink-0" title="Your current alias">🐼</span>
-                        <input 
-                            type="text" 
-                            id="message-input" 
-                            autocomplete="off"
-                            maxlength="500"
-                            placeholder="Send an anonymous whisper..." 
-                            class="w-full bg-transparent text-sm text-white placeholder-zinc-500 focus:outline-none"
-                            disabled
-                        >
-                    </div>
-                    <button 
-                        type="submit" 
-                        id="send-btn"
-                        disabled
-                        class="p-3 sm:px-5 sm:py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-medium text-sm shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 transition active:scale-95 shrink-0"
-                    >
-                        <span class="hidden sm:inline">Send</span>
-                        <i data-lucide="send" class="w-4 h-4"></i>
-                    </button>
-                </form>
-            </div>
-        </main>
+  <!-- Slide-Over Drawer for Rooms & Identity -->
+  <div id="drawerBackdrop" class="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 hidden opacity-0 transition-opacity duration-200"></div>
+  <aside id="roomDrawer" class="fixed top-0 left-0 bottom-0 w-76 max-w-[82vw] bg-[#12121a] border-r border-zinc-800 z-50 -translate-x-full transition-transform duration-200 flex flex-col">
+    <div class="p-4 border-b border-zinc-800 flex items-center justify-between">
+      <div>
+        <h2 class="text-base font-bold text-white tracking-tight">WhisperSpace</h2>
+        <p class="text-[11px] text-zinc-400">E2EE • 24h Self-Destruct</p>
+      </div>
+      <button id="closeDrawerBtn" class="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white">✕</button>
     </div>
 
-    <!-- Firebase & Application Logic -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, 
-            signInAnonymously, 
-            signInWithCustomToken, 
-            onAuthStateChanged,
-            signOut
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, 
-            collection, 
-            doc, 
-            addDoc, 
-            setDoc, 
-            deleteDoc, 
-            onSnapshot, 
-            serverTimestamp 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // ==========================================
-        // 1. CONFIGURATION & INITIALIZATION
-        // ==========================================
-        const appId = 'whisper-space-anon-chat';
-        const firebaseConfig = {
-        apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb4l0",
-        authDomain: "whisperspace-chat.firebaseapp.com",
-        projectId: "whisperspace-chat",
-        storageBucket: "whisperspace-chat.firebasestorage.app",
-        messagingSenderId: "13675671946",
-        appId: "1:13675671946:web:10799476ed4e910b279873"
-        };
-
-        if (!firebaseConfig) {
-            showToast("Missing Firebase configuration environment.", "error");
-            throw new Error("Firebase config missing");
-        }
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        // ==========================================
-        // 2. PERSONA GENERATOR & CONSTANTS
-        // ==========================================
-        const ADJECTIVES = [
-            "Cosmic", "Neon", "Phantom", "Velvet", "Cyber", "Silent", "Astral", 
-            "Lucid", "Electric", "Midnight", "Quantum", "Mystic", "Solar", 
-            "Shadow", "Crystal", "Hyper", "Rogue", "Frost", "Crimson", "Vapor"
-        ];
-
-        const ANIMALS = [
-            { name: "Panda", emoji: "🐼" },
-            { name: "Fox", emoji: "🦊" },
-            { name: "Owl", emoji: "🦉" },
-            { name: "Wolf", emoji: "🐺" },
-            { name: "Raven", emoji: "🐦‍⬛" },
-            { name: "Octopus", emoji: "🐙" },
-            { name: "Lynx", emoji: "🐱" },
-            { name: "Dragon", emoji: "🐉" },
-            { name: "Dolphin", emoji: "🐬" },
-            { name: "Tiger", emoji: "🐯" },
-            { name: "Chameleon", emoji: "🦎" },
-            { name: "Falcon", emoji: "🦅" },
-            { name: "Koala", emoji: "🐨" },
-            { name: "Jellyfish", emoji: "🪼" },
-            { name: "Axolotl", emoji: "🦎" }
-        ];
-
-        const AVATAR_THEMES = [
-            { bg: "bg-indigo-500/20", border: "border-indigo-500/40", text: "text-indigo-300", hex: "#6366f1", bubble: "from-indigo-600 to-indigo-700" },
-            { bg: "bg-purple-500/20", border: "border-purple-500/40", text: "text-purple-300", hex: "#a855f7", bubble: "from-purple-600 to-purple-700" },
-            { bg: "bg-pink-500/20", border: "border-pink-500/40", text: "text-pink-300", hex: "#ec4899", bubble: "from-pink-600 to-rose-600" },
-            { bg: "bg-emerald-500/20", border: "border-emerald-500/40", text: "text-emerald-300", hex: "#10b981", bubble: "from-emerald-600 to-teal-700" },
-            { bg: "bg-amber-500/20", border: "border-amber-500/40", text: "text-amber-300", hex: "#f59e0b", bubble: "from-amber-600 to-orange-600" },
-            { bg: "bg-cyan-500/20", border: "border-cyan-500/40", text: "text-cyan-300", hex: "#06b6d4", bubble: "from-cyan-600 to-blue-600" },
-            { bg: "bg-rose-500/20", border: "border-rose-500/40", text: "text-rose-300", hex: "#f43f5e", bubble: "from-rose-600 to-red-700" }
-        ];
-
-        const PUBLIC_ROOMS = [
-            { id: "general", name: "General Lounge", desc: "Open frequency for everyone online", icon: "hash" },
-            { id: "tech-ai", name: "Tech & AI", desc: "Future tech, code, and neural networks", icon: "cpu" },
-            { id: "late-night", name: "Late Night Thoughts", desc: "Deep conversations & 3 AM philosophy", icon: "moon" },
-            { id: "random", name: "Random Chaos", desc: "Memes, hot takes, and unpredictable banter", icon: "zap" }
-        ];
-
-        // ==========================================
-        // 3. APPLICATION STATE
-        // ==========================================
-        let currentUser = null;
-        let sessionTag = generateShortId(4); // Distinguishes reincarnated sessions
-        let currentPersona = generateRandomPersona();
-        let currentRoom = { ...PUBLIC_ROOMS[0], isPrivate: false };
-        let joinedPrivateRooms = []; // Array of { id, name, code, isPrivate: true }
-        
-        // Active Firestore Unsubscribe Listeners
-        let unsubscribeMessages = null;
-        let unsubscribePresence = null;
-        let presenceHeartbeatInterval = null;
-        let isBurning = false;
-
-        // ==========================================
-        // 4. PERSONA & IDENTITY LOGIC
-        // ==========================================
-        function generateShortId(length = 6) {
-            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-            let res = "";
-            for (let i = 0; i < length; i++) {
-                res += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return res;
-        }
-
-        function generateRandomPersona() {
-            const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-            const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
-            const theme = AVATAR_THEMES[Math.floor(Math.random() * AVATAR_THEMES.length)];
-            return {
-                alias: `${adj} ${animal.name}`,
-                emoji: animal.emoji,
-                theme: theme
-            };
-        }
-
-        function updatePersonaUI() {
-            const avatarEl = document.getElementById('my-avatar');
-            const aliasEl = document.getElementById('my-alias');
-            const uidEl = document.getElementById('my-uid-display');
-            const glowEl = document.getElementById('persona-glow');
-            const inputBadgeEl = document.getElementById('input-avatar-badge');
-
-            avatarEl.textContent = currentPersona.emoji;
-            avatarEl.className = `w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-inner border ${currentPersona.theme.border} ${currentPersona.theme.bg} shrink-0 transition-all duration-300`;
-            aliasEl.textContent = currentPersona.alias;
-            inputBadgeEl.textContent = currentPersona.emoji;
-            glowEl.style.backgroundColor = currentPersona.theme.hex;
-
-            if (currentUser) {
-                uidEl.textContent = `Mask #${sessionTag} • ${currentUser.uid.slice(0, 6)}`;
-            }
-        }
-
-        window.regenerateAlias = async function() {
-            const oldAlias = currentPersona.alias;
-            currentPersona = generateRandomPersona();
-            // Ensure it's actually different
-            while (currentPersona.alias === oldAlias) {
-                currentPersona = generateRandomPersona();
-            }
-            updatePersonaUI();
-            showToast(`Shifted mask to ${currentPersona.emoji} ${currentPersona.alias}`, "info");
-            
-            // Update presence immediately with new alias
-            if (currentUser) {
-                await updatePresence();
-            }
-        };
-
-        // ==========================================
-        // 5. AUTHENTICATION & SESSION BURNING
-        // ==========================================
-        async function initAuth(forceAnonymous = false) {
-            try {
-                updateConnectionStatus("connecting");
-                if (!forceAnonymous && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Auth error:", error);
-                updateConnectionStatus("error");
-                showToast("Connection failed. Retrying...", "error");
-            }
-        }
-
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                currentUser = user;
-                isBurning = false;
-                updatePersonaUI();
-                updateConnectionStatus("connected");
-                
-                // Enable chat input
-                document.getElementById('message-input').disabled = false;
-                document.getElementById('send-btn').disabled = false;
-
-                // Subscribe to current room & global presence
-                switchRoom(currentRoom.id, currentRoom.isPrivate, currentRoom.code);
-                startPresenceHeartbeat();
-            } else if (!isBurning) {
-                currentUser = null;
-                updateConnectionStatus("disconnected");
-            }
-        });
-
-        window.openBurnModal = function() {
-            document.getElementById('modal-overlay').classList.remove('hidden');
-            document.getElementById('modal-overlay').classList.add('flex');
-            document.getElementById('burn-modal').classList.remove('hidden');
-            document.getElementById('private-room-modal').classList.add('hidden');
-        };
-
-        window.executeBurnSession = async function() {
-            closeModals();
-            isBurning = true;
-
-            // 1. Remove old presence doc
-            if (currentUser) {
-                try {
-                    const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', `${currentUser.uid}_${sessionTag}`);
-                    await deleteDoc(presenceRef);
-                } catch (e) {
-                    console.warn("Cleanup presence error:", e);
-                }
-            }
-
-            // 2. Wipe local state & listeners
-            if (unsubscribeMessages) unsubscribeMessages();
-            if (unsubscribePresence) unsubscribePresence();
-            if (presenceHeartbeatInterval) clearInterval(presenceHeartbeatInterval);
-
-            joinedPrivateRooms = [];
-            renderPrivateRoomsList();
-            
-            // Clear messages visually immediately
-            const msgContainer = document.getElementById('messages-container');
-            msgContainer.innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center text-rose-400 gap-3 animate-fade-in">
-                    <i data-lucide="flame" class="w-10 h-10 animate-bounce"></i>
-                    <p class="text-sm font-medium">Session burned. Forging new anonymous identity...</p>
-                </div>
-            `;
-            lucide.createIcons();
-
-            // 3. Generate fresh persona & session tag
-            sessionTag = generateShortId(4);
-            currentPersona = generateRandomPersona();
-            currentRoom = { ...PUBLIC_ROOMS[0], isPrivate: false };
-
-            // 4. Sign out and sign back in anonymously for a clean slate
-            try {
-                await signOut(auth);
-                await initAuth(true);
-                showToast(`Reincarnated as ${currentPersona.emoji} ${currentPersona.alias}`, "success");
-            } catch (err) {
-                console.error("Reincarnation error:", err);
-                showToast("Session reset complete.", "info");
-            }
-        };
-
-        // ==========================================
-        // 6. ROOM MANAGEMENT (PUBLIC & PRIVATE)
-        // ==========================================
-        function renderPublicRoomsList() {
-            const container = document.getElementById('public-rooms-list');
-            container.innerHTML = PUBLIC_ROOMS.map(room => {
-                const isActive = !currentRoom.isPrivate && currentRoom.id === room.id;
-                return `
-                    <button onclick="switchRoom('${room.id}', false)" 
-                        class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition group ${
-                            isActive 
-                            ? 'bg-indigo-600/15 text-white border border-indigo-500/30 shadow-sm' 
-                            : 'text-zinc-400 hover:text-zinc-100 hover:bg-dark-850 border border-transparent'
-                        }">
-                        <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="p-1.5 rounded-lg ${isActive ? 'bg-indigo-500/20 text-indigo-400' : 'bg-dark-800 text-zinc-500 group-hover:text-zinc-300'} transition">
-                                <i data-lucide="${room.icon}" class="w-4 h-4"></i>
-                            </div>
-                            <span class="text-sm font-medium truncate">${room.name}</span>
-                        </div>
-                        <span id="room-count-${room.id}" class="text-[11px] font-mono px-1.5 py-0.5 rounded ${isActive ? 'bg-indigo-500/20 text-indigo-300' : 'text-zinc-600'}">0</span>
-                    </button>
-                `;
-            }).join('');
-            lucide.createIcons();
-        }
-
-        function renderPrivateRoomsList() {
-            const container = document.getElementById('private-rooms-list');
-            if (joinedPrivateRooms.length === 0) {
-                container.innerHTML = `<p class="px-3 py-2 text-xs text-zinc-600 italic">No private rooms active</p>`;
-                return;
-            }
-
-            container.innerHTML = joinedPrivateRooms.map(room => {
-                const isActive = currentRoom.isPrivate && currentRoom.id === room.id;
-                return `
-                    <button onclick="switchRoom('${room.id}', true, '${room.code}')" 
-                        class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition group ${
-                            isActive 
-                            ? 'bg-amber-500/15 text-white border border-amber-500/30' 
-                            : 'text-zinc-400 hover:text-zinc-100 hover:bg-dark-850 border border-transparent'
-                        }">
-                        <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="p-1.5 rounded-lg ${isActive ? 'bg-amber-500/20 text-amber-400' : 'bg-dark-800 text-zinc-500'}">
-                                <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-                            </div>
-                            <div class="truncate">
-                                <div class="text-sm font-medium truncate">Room ${room.code}</div>
-                            </div>
-                        </div>
-                        <span class="text-[10px] font-mono uppercase text-amber-400/80">PVT</span>
-                    </button>
-                `;
-            }).join('');
-            lucide.createIcons();
-        }
-
-        window.switchRoom = async function(roomId, isPrivate = false, code = null) {
-            if (!currentUser) return;
-
-            if (isPrivate) {
-                const cleanCode = (code || roomId.replace('private_', '')).toUpperCase();
-                const fullId = `private_${cleanCode}`;
-                currentRoom = {
-                    id: fullId,
-                    name: `Private Room #${cleanCode}`,
-                    desc: `Unlisted channel • Share code ${cleanCode} to invite others`,
-                    icon: "lock",
-                    isPrivate: true,
-                    code: cleanCode
-                };
-
-                // Add to joined list if not present
-                if (!joinedPrivateRooms.some(r => r.id === fullId)) {
-                    joinedPrivateRooms.push({ id: fullId, code: cleanCode, isPrivate: true });
-                }
-            } else {
-                const found = PUBLIC_ROOMS.find(r => r.id === roomId) || PUBLIC_ROOMS[0];
-                currentRoom = { ...found, isPrivate: false };
-            }
-
-            // Update Header UI
-            document.getElementById('current-room-name').textContent = currentRoom.name;
-            document.getElementById('current-room-desc').textContent = currentRoom.desc;
-            
-            const roomIconEl = document.getElementById('current-room-icon');
-            const privateBadge = document.getElementById('private-room-badge');
-            const shareBtn = document.getElementById('share-code-btn');
-
-            if (currentRoom.isPrivate) {
-                roomIconEl.className = "w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/25";
-                roomIconEl.innerHTML = `<i data-lucide="lock" class="w-5 h-5"></i>`;
-                privateBadge.classList.remove('hidden');
-                privateBadge.classList.add('inline-flex');
-                shareBtn.classList.remove('hidden');
-                shareBtn.classList.add('flex');
-                document.getElementById('header-room-code').textContent = currentRoom.code;
-            } else {
-                roomIconEl.className = "w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20";
-                roomIconEl.innerHTML = `<i data-lucide="${currentRoom.icon}" class="w-5 h-5"></i>`;
-                privateBadge.classList.add('hidden');
-                privateBadge.classList.remove('inline-flex');
-                shareBtn.classList.add('hidden');
-                shareBtn.classList.remove('flex');
-            }
-
-            renderPublicRoomsList();
-            renderPrivateRoomsList();
-            lucide.createIcons();
-
-            // Close mobile sidebar if open
-            const sidebar = document.getElementById('sidebar');
-            if (!sidebar.classList.contains('-translate-x-full') && window.innerWidth < 1024) {
-                toggleMobileSidebar();
-            }
-
-            // Update presence to new room & listen to room messages
-            await updatePresence();
-            subscribeToMessages();
-        };
-
-        window.openPrivateModal = function() {
-            document.getElementById('modal-overlay').classList.remove('hidden');
-            document.getElementById('modal-overlay').classList.add('flex');
-            document.getElementById('private-room-modal').classList.remove('hidden');
-            document.getElementById('burn-modal').classList.add('hidden');
-            document.getElementById('private-code-input').value = '';
-            setTimeout(() => document.getElementById('private-code-input').focus(), 100);
-        };
-
-        window.closeModals = function() {
-            document.getElementById('modal-overlay').classList.add('hidden');
-            document.getElementById('modal-overlay').classList.remove('flex');
-            document.getElementById('private-room-modal').classList.add('hidden');
-            document.getElementById('burn-modal').classList.add('hidden');
-        };
-
-        window.createPrivateRoom = function() {
-            const newCode = `${generateShortId(3)}-${generateShortId(3)}`;
-            closeModals();
-            switchRoom(`private_${newCode}`, true, newCode);
-            showToast(`Created private room ${newCode}`, "success");
-        };
-
-        window.handleJoinPrivateCode = function(e) {
-            e.preventDefault();
-            const raw = document.getElementById('private-code-input').value.trim().toUpperCase();
-            if (!raw || raw.length < 3) {
-                showToast("Please enter a valid room code (at least 3 characters).", "error");
-                return;
-            }
-            const sanitized = raw.replace(/[^A-Z0-9-]/g, '');
-            closeModals();
-            switchRoom(`private_${sanitized}`, true, sanitized);
-            showToast(`Joined private room ${sanitized}`, "success");
-        };
-
-        window.copyRoomCode = function() {
-            if (!currentRoom.isPrivate || !currentRoom.code) return;
-            const tempInput = document.createElement("input");
-            tempInput.value = currentRoom.code;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand("copy");
-            document.body.removeChild(tempInput);
-            showToast(`Room code "${currentRoom.code}" copied to clipboard!`, "success");
-        };
-
-        // ==========================================
-        // 7. REAL-TIME MESSAGING (FIRESTORE)
-        // ==========================================
-        function subscribeToMessages() {
-            if (!currentUser) return;
-            if (unsubscribeMessages) unsubscribeMessages();
-
-            const msgContainer = document.getElementById('messages-container');
-            msgContainer.innerHTML = `
-                <div class="h-full flex flex-col items-center justify-center text-zinc-500 gap-3">
-                    <div class="w-7 h-7 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-xs">Syncing frequency...</p>
-                </div>
-            `;
-
-            // RULE 1 & 2: Strict path, simple collection query, sort in memory
-            const messagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-
-            unsubscribeMessages = onSnapshot(messagesCol, (snapshot) => {
-                if (!currentUser) return;
-                
-                const allMsgs = [];
-                snapshot.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if (data.roomId === currentRoom.id) {
-                        allMsgs.push({ id: docSnap.id, ...data });
-                    }
-                });
-
-                // Sort chronologically in memory
-                allMsgs.sort((a, b) => {
-                    const timeA = a.createdAtMs || (a.timestamp?.toMillis ? a.timestamp.toMillis() : 0);
-                    const timeB = b.createdAtMs || (b.timestamp?.toMillis ? b.timestamp.toMillis() : 0);
-                    return timeA - timeB;
-                });
-
-                // Keep latest 100 messages for smooth performance
-                const recentMsgs = allMsgs.slice(-100);
-                renderMessages(recentMsgs);
-            }, (error) => {
-                console.error("Message listener error:", error);
-                showToast("Error loading messages.", "error");
-            });
-        }
-
-        function renderMessages(messages) {
-            const container = document.getElementById('messages-container');
-            const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-
-            if (messages.length === 0) {
-                container.innerHTML = `
-                    <div class="h-full flex flex-col items-center justify-center text-center px-4 max-w-sm mx-auto animate-fade-in">
-                        <div class="w-16 h-16 rounded-2xl bg-dark-850 border border-zinc-800 flex items-center justify-center text-3xl mb-4 shadow-inner">
-                            ${currentRoom.isPrivate ? '🔐' : '📡'}
-                        </div>
-                        <h3 class="text-base font-semibold text-zinc-200 mb-1">Silence on this frequency</h3>
-                        <p class="text-xs text-zinc-500 leading-relaxed">
-                            ${currentRoom.isPrivate 
-                                ? `Share code <span class="font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">${currentRoom.code}</span> with someone to start chatting privately.` 
-                                : 'Be the first anonymous voice to break the silence in this room.'}
-                        </p>
-                    </div>
-                `;
-                return;
-            }
-
-            let html = '';
-            let lastSenderSession = null;
-
-            messages.forEach((msg) => {
-                const isSelf = msg.uid === currentUser?.uid && msg.sessionTag === sessionTag;
-                const senderSessionKey = `${msg.uid}_${msg.sessionTag || ''}`;
-                const isConsecutive = senderSessionKey === lastSenderSession;
-                lastSenderSession = senderSessionKey;
-
-                const timeStr = formatTimestamp(msg.createdAtMs || (msg.timestamp?.toMillis ? msg.timestamp.toMillis() : Date.now()));
-                const bubbleGradient = msg.bubbleGradient || "from-indigo-600 to-indigo-700";
-
-                if (isSelf) {
-                    html += `
-                        <div class="flex flex-col items-end ${isConsecutive ? 'mt-1' : 'mt-4'} animate-slide-up">
-                            ${!isConsecutive ? `
-                                <div class="flex items-center gap-1.5 mb-1 px-1">
-                                    <span class="text-[11px] text-zinc-500">${timeStr}</span>
-                                    <span class="text-xs font-medium text-indigo-300">You (${escapeHTML(msg.alias)})</span>
-                                    <span class="text-sm">${msg.emoji || '🐼'}</span>
-                                </div>
-                            ` : ''}
-                            <div class="max-w-[82%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl bubble-self bg-gradient-to-br ${bubbleGradient} text-white text-sm leading-relaxed shadow-md break-words">
-                                ${escapeHTML(msg.text)}
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    html += `
-                        <div class="flex items-end gap-2.5 ${isConsecutive ? 'mt-1' : 'mt-4'} animate-slide-up">
-                            ${!isConsecutive ? `
-                                <div class="w-8 h-8 rounded-xl bg-dark-850 border border-zinc-700/80 flex items-center justify-center text-base shrink-0 mb-0.5 shadow-sm">
-                                    ${msg.emoji || '👤'}
-                                </div>
-                            ` : `<div class="w-8 shrink-0"></div>`}
-                            
-                            <div class="flex flex-col items-start max-w-[82%] sm:max-w-[70%]">
-                                ${!isConsecutive ? `
-                                    <div class="flex items-center gap-2 mb-1 px-1">
-                                        <span class="text-xs font-semibold ${msg.textColor || 'text-zinc-300'}">${escapeHTML(msg.alias || 'Anonymous')}</span>
-                                        <span class="text-[11px] text-zinc-600">${timeStr}</span>
-                                    </div>
-                                ` : ''}
-                                <div class="px-4 py-2.5 rounded-2xl bubble-other bg-dark-850 border border-zinc-800 text-zinc-100 text-sm leading-relaxed shadow-sm break-words">
-                                    ${escapeHTML(msg.text)}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-            });
-
-            container.innerHTML = html;
-
-            if (wasAtBottom) {
-                scrollToBottom(false);
-            } else {
-                document.getElementById('scroll-bottom-btn').classList.remove('hidden');
-            }
-        }
-
-        window.handleSendMessage = async function(e) {
-            e.preventDefault();
-            if (!currentUser) return;
-
-            const input = document.getElementById('message-input');
-            const text = input.value.trim();
-            if (!text) return;
-
-            input.value = '';
-            input.focus();
-
-            try {
-                const messagesCol = collection(db, 'artifacts', appId, 'public', 'data', 'messages');
-                await addDoc(messagesCol, {
-                    roomId: currentRoom.id,
-                    uid: currentUser.uid,
-                    sessionTag: sessionTag,
-                    alias: currentPersona.alias,
-                    emoji: currentPersona.emoji,
-                    textColor: currentPersona.theme.text,
-                    bubbleGradient: currentPersona.theme.bubble,
-                    text: text,
-                    createdAtMs: Date.now(),
-                    timestamp: serverTimestamp()
-                });
-                scrollToBottom(true);
-            } catch (error) {
-                console.error("Send message failed:", error);
-                showToast("Failed to send message. Check connection.", "error");
-            }
-        };
-
-        // ==========================================
-        // 8. ONLINE USER PRESENCE SYSTEM
-        // ==========================================
-        async function updatePresence() {
-            if (!currentUser || isBurning) return;
-            try {
-                const docId = `${currentUser.uid}_${sessionTag}`;
-                const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', docId);
-                await setDoc(presenceRef, {
-                    uid: currentUser.uid,
-                    sessionTag: sessionTag,
-                    alias: currentPersona.alias,
-                    emoji: currentPersona.emoji,
-                    roomId: currentRoom.id,
-                    isPrivate: currentRoom.isPrivate,
-                    lastSeenMs: Date.now()
-                });
-            } catch (err) {
-                console.warn("Presence heartbeat warning:", err);
-            }
-        }
-
-        function startPresenceHeartbeat() {
-            if (presenceHeartbeatInterval) clearInterval(presenceHeartbeatInterval);
-            if (unsubscribePresence) unsubscribePresence();
-
-            // Send heartbeat every 20 seconds
-            updatePresence();
-            presenceHeartbeatInterval = setInterval(updatePresence, 20000);
-
-            // Listen to all active presence records
-            const presenceCol = collection(db, 'artifacts', appId, 'public', 'data', 'presence');
-            unsubscribePresence = onSnapshot(presenceCol, (snapshot) => {
-                if (!currentUser) return;
-                const now = Date.now();
-                const activeCutoff = 55000; // Consider users active if seen in last 55s
-
-                const activeUsers = [];
-                const roomCounts = {};
-                PUBLIC_ROOMS.forEach(r => roomCounts[r.id] = 0);
-
-                snapshot.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if (now - (data.lastSeenMs || 0) < activeCutoff) {
-                        activeUsers.push(data);
-                        if (!data.isPrivate && roomCounts[data.roomId] !== undefined) {
-                            roomCounts[data.roomId]++;
-                        }
-                    }
-                });
-
-                // Update sidebar public room counts
-                PUBLIC_ROOMS.forEach(r => {
-                    const badge = document.getElementById(`room-count-${r.id}`);
-                    if (badge) badge.textContent = roomCounts[r.id] || 0;
-                });
-
-                // Update global online badge
-                document.getElementById('total-online-badge').textContent = `${Math.max(1, activeUsers.length)} online`;
-
-                // Filter users in current room
-                const inCurrentRoom = activeUsers.filter(u => u.roomId === currentRoom.id);
-                // Ensure self is always counted
-                const selfIncluded = inCurrentRoom.some(u => u.uid === currentUser.uid && u.sessionTag === sessionTag);
-                if (!selfIncluded) {
-                    inCurrentRoom.unshift({
-                        uid: currentUser.uid,
-                        sessionTag: sessionTag,
-                        alias: currentPersona.alias,
-                        emoji: currentPersona.emoji
-                    });
-                }
-
-                document.getElementById('room-presence-count').textContent = inCurrentRoom.length;
-
-                // Render active user pills strip
-                const pillsContainer = document.getElementById('active-users-pills');
-                pillsContainer.innerHTML = inCurrentRoom.map(u => {
-                    const isMe = u.uid === currentUser.uid && u.sessionTag === sessionTag;
-                    return `
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] shrink-0 border ${
-                            isMe 
-                            ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30 font-medium' 
-                            : 'bg-dark-850 text-zinc-300 border-zinc-800'
-                        }">
-                            <span>${u.emoji || '👤'}</span>
-                            <span>${escapeHTML(u.alias)}${isMe ? ' (You)' : ''}</span>
-                        </span>
-                    `;
-                }).join('');
-            }, (error) => {
-                console.warn("Presence listener error:", error);
-            });
-        }
-
-        // Clean up presence on tab close
-        window.addEventListener('beforeunload', () => {
-            if (currentUser) {
-                const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'presence', `${currentUser.uid}_${sessionTag}`);
-                deleteDoc(presenceRef).catch(() => {});
-            }
-        });
-
-        // ==========================================
-        // 9. UI HELPERS & UTILITIES
-        // ==========================================
-        window.toggleMobileSidebar = function() {
-            const sidebar = document.getElementById('sidebar');
-            const backdrop = document.getElementById('sidebar-backdrop');
-            const isClosed = sidebar.classList.contains('-translate-x-full');
-            
-            if (isClosed) {
-                sidebar.classList.remove('-translate-x-full');
-                backdrop.classList.remove('hidden');
-            } else {
-                sidebar.classList.add('-translate-x-full');
-                backdrop.classList.add('hidden');
-            }
-        };
-
-        window.scrollToBottom = function(smooth = true) {
-            const container = document.getElementById('messages-container');
-            container.scrollTo({
-                top: container.scrollHeight,
-                behavior: smooth ? 'smooth' : 'auto'
-            });
-            document.getElementById('scroll-bottom-btn').classList.add('hidden');
-        };
-
-        // Detect manual scroll up to show "Scroll to bottom" button
-        document.getElementById('messages-container').addEventListener('scroll', function() {
-            const isAtBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 100;
-            const btn = document.getElementById('scroll-bottom-btn');
-            if (isAtBottom) {
-                btn.classList.add('hidden');
-            } else {
-                btn.classList.remove('hidden');
-            }
-        });
-
-        function updateConnectionStatus(status) {
-            const dot = document.getElementById('connection-dot');
-            const text = document.getElementById('connection-text');
-            if (status === 'connected') {
-                dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]';
-                text.textContent = 'Encrypted Live';
-            } else if (status === 'connecting') {
-                dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-                text.textContent = 'Handshaking...';
-            } else {
-                dot.className = 'w-2 h-2 rounded-full bg-rose-500';
-                text.textContent = 'Offline';
-            }
-        }
-
-        function formatTimestamp(ms) {
-            if (!ms) return '';
-            const date = new Date(ms);
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        function escapeHTML(str) {
-            if (!str) return '';
-            return str
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        }
-
-        function showToast(message, type = "info") {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            
-            const styles = {
-                info: "bg-dark-850 border-zinc-700 text-zinc-200",
-                success: "bg-emerald-950/90 border-emerald-500/40 text-emerald-200",
-                error: "bg-rose-950/90 border-rose-500/40 text-rose-200"
-            };
-
-            const icons = {
-                info: "sparkles",
-                success: "check-circle-2",
-                error: "alert-circle"
-            };
-
-            toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-md text-xs font-medium animate-slide-up ${styles[type] || styles.info}`;
-            toast.innerHTML = `
-                <i data-lucide="${icons[type] || 'info'}" class="w-4 h-4 shrink-0"></i>
-                <span class="flex-1">${escapeHTML(message)}</span>
-            `;
-
-            container.appendChild(toast);
-            lucide.createIcons();
-
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateY(-8px)';
-                toast.style.transition = 'all 0.25s ease';
-                setTimeout(() => toast.remove(), 250);
-            }, 3200);
-        }
-
-        // ==========================================
-        // 10. BOOTSTRAP APP
-        // ==========================================
-        lucide.createIcons();
-        updatePersonaUI();
-        renderPublicRoomsList();
-        renderPrivateRoomsList();
-        initAuth();
-    </script>
-</body>
-</html>
+    <!-- Current Persona Card -->
+    <div class="p-4 border-b border-zinc-800/80 bg-zinc-900/50">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span id="drawerAvatar" class="text-2xl">🐼</span>
+          <div>
+            <p class="text-[11px] uppercase tracking-wider text-zinc-500">Your Alias</p>
+            <p id="drawerAlias" class="text-sm font-semibold text-white">Loading...</p>
+          </div>
+        </div>
+        <button id="rerollPersonaBtn" class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 active:scale-95 transition">
+          New Alias
+        </button>
+      </div>
+    </div>
+
+    <!-- Frequencies / Rooms -->
+    <div class="p-4 flex-1 overflow-y-auto space-y-5">
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">Public Frequency</p>
+        <button id="joinGeneralBtn" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-left text-sm font-medium text-white">
+          <span class="text-indigo-400 font-bold">#</span>
+          <span>General Lounge</span>
+        </button>
+      </div>
+
+      <div class="space-y-2.5">
+        <p class="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Private Encrypted Room</p>
+        <button id="createPrivateBtn" class="w-full py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white transition">
+          + Create Secret Room
+        </button>
+        <form id="joinPrivateForm" class="flex gap-1.5 pt-1">
+          <input
+            id="privateCodeInput"
+            type="text"
+            placeholder="Enter secret room code..."
+            class="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+          />
+          <button type="submit" class="px-3 py-2 rounded-xl bg-indigo-600 text-xs font-semibold text-white">
+            Join
+          </button>
+        </form>
+        <p class="text-[11px] text-zinc-500 leading-relaxed">
+          Private room codes never appear in public lists. Only people with the exact code can derive the decryption key.
+        </p>
+      </div>
+    </div>
+  </aside>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      addDoc,
+      setDoc,
+      getDoc,
+      deleteDoc,
+      query,
+      where,
+      onSnapshot,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // ==========================================
+    // 1. CONFIGURATION & INITIALIZATION
+    // ==========================================
+    const appId = 'whisper-space-anon-chat';
+    const firebaseConfig = {
+      apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb4l0",
+      authDomain: "whisperspace-chat.firebaseapp.com",
+      projectId: "whisperspace-chat",
+      storageBucket: "whisperspace-chat.firebasestorage.app",
+      messagingSenderId: "13675671946",
+      appId: "1:13675671946:web:10799476ed4e910b279873"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ==========================================
+    // 1B. END-TO-END ROOM ENCRYPTION (AES-256-GCM)
+    // ==========================================
+    const keyCache = new Map();
+
+    async function deriveRoomKey(roomSecret) {
+      if (keyCache.has(roomSecret)) return keyCache.get(roomSecret);
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(roomSecret),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+      );
+      const derivedKey = await crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: enc.encode("whisperspace-e2ee-salt-v1"),
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+      );
+      keyCache.set(roomSecret, derivedKey);
+      return derivedKey;
+    }
+
+    async function encryptText(plainText, roomSecret) {
+      const key = await deriveRoomKey(roomSecret);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encoded = new TextEncoder().encode(plainText);
+      const cipherBuffer = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+      const combined = new Uint8Array(iv.length + cipherBuffer.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(cipherBuffer), iv.length);
+      let binary = "";
+      for (let i = 0; i < combined.length; i++) binary += String.fromCharCode(combined[i]);
+      return btoa(binary);
+    }
+
+    async function decryptText(cipherBase64, roomSecret) {
+      try {
+        const key = await deriveRoomKey(roomSecret);
+        const binary = atob(cipherBase64);
+        const combined = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) combined[i] = binary.charCodeAt(i);
+        const iv = combined.slice(0, 12);
+        const data = combined.slice(12);
+        const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+        return new TextDecoder().decode(decrypted);
+      } catch (e) {
+        return "🔒 [Encrypted message — invalid room key]";
+      }
+    }
+
+    // ==========================================
+    // 2. PERSONA GENERATOR & CONSTANTS
+    // ==========================================
+    const ADJECTIVES = [
+      "Cosmic", "Neon", "Phantom", "Velvet", "Cyber", "Silent", "Astral",
+      "Lucid", "Electric", "Midnight", "Quantum", "Mystic", "Solar",
+      "Shadow", "Crystal", "Hyper", "Rogue", "Frost", "Crimson", "Vapor"
+    ];
+    const ANIMALS = [
+      { name: "Panda", emoji: "🐼" }, { name: "Fox", emoji: "🦊" },
+      { name: "Owl", emoji: "🦉" }, { name: "Wolf", emoji: "🐺" },
+      { name: "Raven", emoji: "🐦‍⬛" }, { name: "Lynx", emoji: "🐱" },
+      { name: "Octopus", emoji: "🐙" }, { name: "Falcon", emoji: "🦅" },
+      { name: "Viper", emoji: "🐍" }, { name: "Tiger", emoji: "🐯" }
+    ];
+    const COLORS = [
+      "#818cf8", "#34d399", "#f472b6", "#fbbf24", "#38bdf8", "#a78bfa", "#fb7185"
+    ];
+
+    function generatePersona() {
+      const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+      const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+      return {
+        name: `${adj} ${animal.name}`,
+        emoji: animal.emoji,
+        color
+      };
+    }
+
+    let currentPersona = JSON.parse(localStorage.getItem("ws_persona") || "null") || generatePersona();
+    localStorage.setItem("ws_persona", JSON.stringify(currentPersona));
+
+    // ==========================================
+    // 3. APP STATE & UI REFERENCES
+    // ==========================================
+    let currentUser = null;
+    let currentRoomId = "general-lounge";
+    let unsubscribeMessages = null;
+    let unsubscribePresence = null;
+    let presenceTimer = null;
+
+    const messagesContainer = document.getElementById("messagesContainer");
+    const messageForm = document.getElementById("messageForm");
+    const messageInput = document.getElementById
