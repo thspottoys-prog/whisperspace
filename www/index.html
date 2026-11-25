@@ -153,9 +153,19 @@
         </p>
       </div>
     </div>
+
+    <!-- Danger Zone: Clear Own Messages -->
+    <div class="p-4 border-t border-zinc-800/80 bg-zinc-950/50">
+      <button
+        id="clearMyMessagesBtn"
+        class="w-full py-2.5 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs font-semibold text-red-400 active:scale-95 transition"
+      >
+        Clear My Messages in Room
+      </button>
+    </div>
   </aside>
 
-  <!-- Global Error Catcher (runs even if module imports fail) -->
+  <!-- Global Error Catcher -->
   <script>
     function setDiagnostic(title, detail = "", isError = false) {
       const s = document.getElementById("statusText");
@@ -192,7 +202,9 @@
       addDoc,
       setDoc,
       getDoc,
+      getDocs,
       deleteDoc,
+      writeBatch,
       query,
       where,
       onSnapshot,
@@ -204,12 +216,12 @@
     // ==========================================
     const appId = 'whisper-space-anon-chat';
     const firebaseConfig = {
-     apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb4l0",
-     authDomain: "whisperspace-chat.firebaseapp.com",
-     projectId: "whisperspace-chat",
-     storageBucket: "whisperspace-chat.firebasestorage.app",
-     messagingSenderId: "13675671946",
-     appId: "1:13675671946:web:10799476ed4e910b279873"
+      apiKey: "AIzaSyAWCDtCxwlCpRY64PcNLkbIkmDp2ejb4l0",
+      authDomain: "whisperspace-chat.firebaseapp.com",
+      projectId: "whisperspace-chat",
+      storageBucket: "whisperspace-chat.firebasestorage.app",
+      messagingSenderId: "13675671946",
+      appId: "1:13675671946:web:10799476ed4e910b279873"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -319,6 +331,10 @@
     let unsubscribeMessages = null;
     let unsubscribePresence = null;
     let presenceTimer = null;
+    let pendingDeleteId = null;
+    let pendingDeleteTimer = null;
+    let pendingClearConfirm = false;
+    let pendingClearTimer = null;
 
     const messagesContainer = document.getElementById("messagesContainer");
     const messageForm = document.getElementById("messageForm");
@@ -328,6 +344,7 @@
     const roomTitle = document.getElementById("roomTitle");
     const roomSubtitle = document.getElementById("roomSubtitle");
     const copyRoomBtn = document.getElementById("copyRoomBtn");
+    const clearMyMessagesBtn = document.getElementById("clearMyMessagesBtn");
     const toastEl = document.getElementById("toast");
 
     function showToast(msg) {
@@ -348,6 +365,7 @@
     const drawerBackdrop = document.getElementById("drawerBackdrop");
 
     function openDrawer() {
+      resetClearConfirm();
       drawerBackdrop.classList.remove("hidden");
       requestAnimationFrame(() => {
         drawerBackdrop.classList.remove("opacity-0");
@@ -430,10 +448,8 @@
         </div>
       `;
 
-      // Verify Web Crypto works immediately before subscribing
       await deriveRoomKey(roomId);
 
-      // Ensure room metadata exists for private rooms
       if (isPrivate) {
         const roomRef = doc(db, ...baseDataPath, "rooms", roomId);
         const snap = await getDoc(roomRef).catch(() => null);
@@ -445,7 +461,6 @@
         }
       }
 
-      // Listen to presence in current room
       const presenceQuery = query(
         collection(db, ...baseDataPath, "presence"),
         where("roomId", "==", currentRoomId)
@@ -484,7 +499,6 @@
 
       setDiagnostic("Step 4/4: Connecting to Firestore...", "Waiting for server response");
 
-      // Listen to messages in current room
       const messagesQuery = query(
         collection(db, ...baseDataPath, "messages"),
         where("roomId", "==", currentRoomId)
@@ -535,34 +549,35 @@
                 : msg.text;
 
               return `
-             <div class="flex flex-col ${isMe ? "items-end" : "items-start"} group">
-               <div class="flex items-center gap-1.5 mb-1 px-1">
-                 <span class="text-xs">${msg.senderEmoji || "👤"}</span>
-                 <span class="text-[11px] font-medium" style="color: ${msg.senderColor || "#a1a1aa"}">
-                   ${escapeHtml(msg.senderName || "Anonymous")}${isMe ? " (You)" : ""}
-                 </span>
-                 <span class="text-[10px] text-zinc-600">${formatTime(msg.createdAt)}</span>
-                 ${
-                   isMe
-                     ? `<button
-                         onclick="window.deleteMyMessage('${msg.id}')"
-                         title="Delete message"
-                         class="ml-1 text-[10px] text-zinc-500 hover:text-red-400 active:text-red-400 px-1 py-0.5 rounded transition"
-                       >
-                         Delete
-                       </button>`
-                     : ""
-                 }
-               </div>
-               <div class="max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
-                 isMe
-                   ? "bg-indigo-600 text-white rounded-br-sm"
-                   : "bg-[#181824] border border-zinc-800/90 text-zinc-100 rounded-bl-sm"
-               }">
-                 ${escapeHtml(plainText)}
-               </div>
-             </div>
-           `;
+                <div class="flex flex-col ${isMe ? "items-end" : "items-start"}">
+                  <div class="flex items-center gap-1.5 mb-1 px-1">
+                    <span class="text-xs">${msg.senderEmoji || "👤"}</span>
+                    <span class="text-[11px] font-medium" style="color: ${msg.senderColor || "#a1a1aa"}">
+                      ${escapeHtml(msg.senderName || "Anonymous")}${isMe ? " (You)" : ""}
+                    </span>
+                    <span class="text-[10px] text-zinc-600">${formatTime(msg.createdAt)}</span>
+                    ${
+                      isMe
+                        ? `<button
+                            type="button"
+                            data-del-id="${msg.id}"
+                            onclick="window.handleDeleteTap(this, '${msg.id}')"
+                            class="ml-1 text-[10px] text-zinc-500 hover:text-red-400 active:text-red-400 px-1.5 py-0.5 rounded transition"
+                          >
+                            Delete
+                          </button>`
+                        : ""
+                    }
+                  </div>
+                  <div class="max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
+                    isMe
+                      ? "bg-indigo-600 text-white rounded-br-sm"
+                      : "bg-[#181824] border border-zinc-800/90 text-zinc-100 rounded-bl-sm"
+                  }">
+                    ${escapeHtml(plainText)}
+                  </div>
+                </div>
+              `;
             })
           );
 
@@ -580,19 +595,99 @@
       );
     }
 
-    window.deleteMyMessage = async function (messageId) {
-  if (!currentUser) return;
-  try {
-    await deleteDoc(doc(db, ...baseDataPath, "messages", messageId));
-    showToast("Message deleted");
-  } catch (err) {
-    showToast("Could not delete message");
-  }
-};
+    // ==========================================
+    // 5. SEND, DELETE, CLEAR & ROOM ACTIONS
+    // ==========================================
+    window.handleDeleteTap = async function (btnEl, messageId) {
+      if (!currentUser) return;
 
-    // ==========================================
-    // 5. SEND ENCRYPTED MESSAGE & ROOM ACTIONS
-    // ==========================================
+      // Two-tap confirmation to avoid accidental deletion
+      if (pendingDeleteId !== messageId) {
+        if (pendingDeleteTimer) clearTimeout(pendingDeleteTimer);
+        document.querySelectorAll("[data-del-id]").forEach((el) => {
+          el.textContent = "Delete";
+          el.classList.remove("text-red-400", "bg-red-500/15", "font-semibold");
+        });
+
+        pendingDeleteId = messageId;
+        btnEl.textContent = "Confirm?";
+        btnEl.classList.add("text-red-400", "bg-red-500/15", "font-semibold");
+
+        pendingDeleteTimer = setTimeout(() => {
+          pendingDeleteId = null;
+          if (btnEl) {
+            btnEl.textContent = "Delete";
+            btnEl.classList.remove("text-red-400", "bg-red-500/15", "font-semibold");
+          }
+        }, 3000);
+        return;
+      }
+
+      // Second tap confirmed: delete from Firestore
+      pendingDeleteId = null;
+      if (pendingDeleteTimer) clearTimeout(pendingDeleteTimer);
+      btnEl.textContent = "Deleting...";
+
+      try {
+        await deleteDoc(doc(db, ...baseDataPath, "messages", messageId));
+        showToast("Message deleted");
+      } catch (err) {
+        showToast("Failed to delete message");
+        btnEl.textContent = "Delete";
+      }
+    };
+
+    function resetClearConfirm() {
+      pendingClearConfirm = false;
+      if (pendingClearTimer) clearTimeout(pendingClearTimer);
+      clearMyMessagesBtn.textContent = "Clear My Messages in Room";
+      clearMyMessagesBtn.classList.remove("bg-red-600", "text-white");
+      clearMyMessagesBtn.classList.add("bg-red-500/10", "text-red-400");
+    }
+
+    clearMyMessagesBtn.addEventListener("click", async () => {
+      if (!currentUser) return;
+
+      if (!pendingClearConfirm) {
+        pendingClearConfirm = true;
+        clearMyMessagesBtn.textContent = "Tap Again to Confirm Clear";
+        clearMyMessagesBtn.classList.remove("bg-red-500/10", "text-red-400");
+        clearMyMessagesBtn.classList.add("bg-red-600", "text-white");
+        pendingClearTimer = setTimeout(resetClearConfirm, 3500);
+        return;
+      }
+
+      resetClearConfirm();
+      clearMyMessagesBtn.textContent = "Clearing...";
+
+      try {
+        const myMsgsQuery = query(
+          collection(db, ...baseDataPath, "messages"),
+          where("roomId", "==", currentRoomId),
+          where("senderId", "==", currentUser.uid)
+        );
+        const snap = await getDocs(myMsgsQuery);
+
+        if (snap.empty) {
+          showToast("No messages to clear");
+          resetClearConfirm();
+          closeDrawer();
+          return;
+        }
+
+        const batch = writeBatch(db);
+        snap.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+
+        showToast(`Cleared ${snap.size} message${snap.size === 1 ? "" : "s"}`);
+        closeDrawer();
+      } catch (err) {
+        showToast("Failed to clear messages");
+      } finally {
+        resetClearConfirm();
+      }
+    });
+
     messageForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const rawText = messageInput.value.trim();
